@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Header from './components/Header.jsx';
 import Toolbar from './components/Toolbar.jsx';
 import LogViewport from './components/LogViewport.jsx';
@@ -551,16 +552,39 @@ export default function App() {
           />
         )}
       </main>
-      <div className={`sidebar-backdrop ${sidebarOpen ? 'sidebar-backdrop-visible' : ''}`} aria-hidden={!sidebarOpen} onClick={closeSidebar} />
-      <Sidebar
-        isOpen={sidebarOpen}
-        onClose={closeSidebar}
-        entryIndex={sidebarEntryIndex}
-        entry={currentEntry}
-        logEntries={currentLogEntries}
-        viewMode={activeLogTab === 'audit' || activeLogTab === 'content' ? 'columns' : viewMode}
-        sensitiveScanEnabled={sensitiveScanEnabled}
-      />
+      {createPortal(
+        <div
+          className="sidebar-overlay-root"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2147483647,
+            pointerEvents: 'none',
+            transform: 'translateZ(0)',
+          }}
+          aria-hidden={!sidebarOpen}
+        >
+          <div
+            className={`sidebar-backdrop ${sidebarOpen ? 'sidebar-backdrop-visible' : ''}`}
+            aria-hidden={!sidebarOpen}
+            onClick={closeSidebar}
+            style={{ pointerEvents: sidebarOpen ? 'auto' : 'none' }}
+          />
+          <div style={{ pointerEvents: 'auto' }}>
+            <Sidebar
+              isOpen={sidebarOpen}
+              onClose={closeSidebar}
+              entryIndex={sidebarEntryIndex}
+              entry={currentEntry}
+              logEntries={currentLogEntries}
+              viewMode={activeLogTab === 'audit' || activeLogTab === 'content' ? 'columns' : viewMode}
+              sensitiveScanEnabled={sensitiveScanEnabled}
+              activeLogTab={activeLogTab}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

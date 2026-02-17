@@ -2,39 +2,45 @@
   "hash": "6d689d45",
   "configHash": "2ca35dac",
   "lockfileHash": "59bbeaf5",
-  "browserHash": "8a82c135",
+  "browserHash": "f417151a",
   "optimized": {
     "react": {
       "src": "../../node_modules/react/index.js",
       "file": "react.js",
-      "fileHash": "365422ce",
+      "fileHash": "046ed885",
       "needsInterop": true
     },
     "react-dom/client": {
       "src": "../../node_modules/react-dom/client.js",
       "file": "react-dom_client.js",
-      "fileHash": "3deef554",
+      "fileHash": "55ee0719",
       "needsInterop": true
     },
     "@mirohq/design-system": {
       "src": "../../node_modules/@mirohq/design-system/dist/module.js",
       "file": "@mirohq_design-system.js",
-      "fileHash": "327512a1",
+      "fileHash": "4eebf0db",
       "needsInterop": false
     },
     "@mirohq/design-system-icons": {
       "src": "../../node_modules/@mirohq/design-system-icons/dist/module.js",
       "file": "@mirohq_design-system-icons.js",
-      "fileHash": "98b85846",
+      "fileHash": "ce167b7e",
       "needsInterop": false
+    },
+    "react-dom": {
+      "src": "../../node_modules/react-dom/index.js",
+      "file": "react-dom.js",
+      "fileHash": "b7de233a",
+      "needsInterop": true
     }
   },
   "chunks": {
-    "chunk-OSP6VPLX": {
-      "file": "chunk-OSP6VPLX.js"
+    "chunk-RA2V6PFE": {
+      "file": "chunk-RA2V6PFE.js"
     },
-    "chunk-LV7LEDEA": {
-      "file": "chunk-LV7LEDEA.js"
+    "chunk-35C4W5R3": {
+      "file": "chunk-35C4W5R3.js"
     },
     "chunk-JRE55LYH": {
       "file": "chunk-JRE55LYH.js"

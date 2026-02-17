@@ -105,6 +105,134 @@ export function parseMiroItem(item) {
   return { time, user, feature, type };
 }
 
+/** Get session id from an AI interaction log entry (from raw payload). */
+export function getEntrySessionId(entry) {
+  if (!entry?.raw || typeof entry.raw !== 'object') return null;
+  const raw = entry.raw;
+  const data = raw.data != null ? raw.data : raw;
+  const id = data.sessionId ?? data.session_id ?? raw.sessionId ?? raw.session_id;
+  return id != null && id !== '' ? String(id) : null;
+}
+
+/** Get actor email from an AI interaction log entry (from raw.payload.data.actor.email). */
+export function getEntryActorEmail(entry) {
+  if (!entry?.raw || typeof entry.raw !== 'object') return null;
+  const raw = entry.raw;
+  const data = raw.data != null ? raw.data : raw;
+  const actor = data.actor;
+  const email = actor && typeof actor === 'object' && actor.email != null ? String(actor.email).trim() : '';
+  return email !== '' ? email : null;
+}
+
+/** Get actor name from an AI interaction log entry (from raw.data.actor.name or entry.user). */
+export function getEntryActorName(entry) {
+  if (!entry) return '';
+  if (entry.raw && typeof entry.raw === 'object') {
+    const data = entry.raw.data != null ? entry.raw.data : entry.raw;
+    const actor = data.actor;
+    if (actor && typeof actor === 'object' && actor.name != null) return String(actor.name).trim();
+  }
+  return (entry.user && String(entry.user).trim()) || '';
+}
+
+/** Strip trailing "chat" line from API payload (e.g. logType appended to content). */
+function stripTrailingChatLine(s) {
+  if (typeof s !== 'string') return s;
+  const t = s.trimEnd();
+  if (t.endsWith('\nchat') || t.endsWith('\r\nchat')) return t.slice(0, t.length - (t.endsWith('\r\nchat') ? 6 : 5)).trimEnd();
+  if (t === 'chat') return '';
+  return s;
+}
+
+/**
+ * Extract messages from a single entry's raw data. Tries multiple common payload shapes.
+ * Returns array of { role, content, time, actorName }.
+ */
+function extractMessagesFromEntry(entry, timeMs) {
+  const data = entry.raw?.data != null ? entry.raw.data : entry.raw;
+  if (!data || typeof data !== 'object') return [];
+  const out = [];
+  const t = timeMs;
+  const actorName = getEntryActorName(entry);
+
+  if (Array.isArray(data.messages)) {
+    for (const m of data.messages) {
+      const role = (m.role || 'user').toLowerCase();
+      const content = stripTrailingChatLine(m.content ?? m.text ?? '');
+      if (String(content).trim()) out.push({ role, content: String(content).trim(), time: t, actorName });
+    }
+    if (out.length) return out;
+  }
+
+  const prompt = data.prompt ?? data.details?.prompt ?? data.input;
+  const response = data.response ?? data.details?.response ?? data.output;
+  if (prompt != null) {
+    const c = stripTrailingChatLine(String(prompt)).trim();
+    if (c) out.push({ role: 'user', content: c, time: t, actorName });
+  }
+  if (response != null) {
+    const c = stripTrailingChatLine(String(response)).trim();
+    if (c) out.push({ role: 'assistant', content: c, time: t, actorName });
+  }
+  if (out.length) return out;
+
+  const text = data.text ?? data.details?.text ?? data.content ?? data.body;
+  if (text != null) {
+    const c = stripTrailingChatLine(String(text)).trim();
+    if (c) out.push({ role: 'user', content: c, time: t, actorName });
+  }
+  if (out.length) return out;
+
+  const fallback = getTextToScan(entry);
+  if (fallback) {
+    const c = stripTrailingChatLine(fallback).trim();
+    if (c) out.push({ role: 'user', content: c, time: t, actorName });
+  }
+  return out;
+}
+
+/**
+ * Build ordered list of conversation messages from log entries with the same actor.email and session id.
+ * Always includes selectedEntry so at least the current log item's content is shown.
+ */
+export function getConversationMessages(logEntries, actorEmail, sessionId, selectedEntry = null) {
+  const normEmail = actorEmail != null ? String(actorEmail).trim() : '';
+  const normSid = sessionId != null ? String(sessionId) : '';
+  if (!selectedEntry && !normEmail && !normSid) return [];
+
+  const entries =
+    normEmail || normSid
+      ? (logEntries || []).filter((e) => {
+          const email = getEntryActorEmail(e);
+          const sid = getEntrySessionId(e);
+          const eEmail = email != null ? String(email).trim() : '';
+          const eSid = sid != null ? String(sid) : '';
+          const matchEmail = !normEmail || eEmail === normEmail;
+          const matchSid = !normSid || eSid === normSid;
+          return matchEmail && matchSid;
+        })
+      : [];
+
+  const alreadyIncluded = selectedEntry && entries.some((e) => e === selectedEntry || e.raw === selectedEntry?.raw);
+  const toProcess = selectedEntry && !alreadyIncluded ? [selectedEntry, ...entries] : entries;
+  const byTime = [...toProcess].sort((a, b) => getEntrySortTime(a) - getEntrySortTime(b));
+
+  const out = [];
+  const seen = new Set();
+  for (const entry of byTime) {
+    const time = entry.time || getEntrySortTime(entry);
+    const t = typeof time === 'number' ? time : new Date(String(time)).getTime();
+    const msgs = extractMessagesFromEntry(entry, t);
+    for (const m of msgs) {
+      const key = `${t}-${m.role}-${m.content.slice(0, 50)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(m);
+    }
+  }
+  return out;
+}
+
 export function parseAuditItem(item) {
   const data = item && typeof item === 'object' && item.data != null ? item.data : item;
   if (typeof data !== 'object' || data === null) {
