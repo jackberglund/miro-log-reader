@@ -17,7 +17,9 @@ export default function Sidebar({ isOpen, onClose, entryIndex, entry, logEntries
   const isAiInteraction = activeLogTab === 'ai-interaction';
   const sessionId = entry ? getEntrySessionId(entry) : null;
   const actorEmail = entry ? getEntryActorEmail(entry) : null;
-  const canViewConversation = isAiInteraction && entry;
+  const feature = entry?.feature ?? '';
+  const canViewConversation = isAiInteraction && entry &&
+    (feature === 'miro_ai_sidekicks_chat' || feature.includes('sidekicks'));
   const conversationMessages = canViewConversation
     ? getConversationMessages(logEntries, actorEmail, sessionId, entry)
     : [];

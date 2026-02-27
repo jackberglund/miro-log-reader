@@ -153,7 +153,7 @@ function extractMessagesFromEntry(entry, timeMs) {
   if (!data || typeof data !== 'object') return [];
   const out = [];
   const t = timeMs;
-  const actorName = getEntryActorName(entry);
+  const actorName = entry.type === 'response' ? 'Sidekick' : getEntryActorName(entry);
 
   if (Array.isArray(data.messages)) {
     for (const m of data.messages) {
