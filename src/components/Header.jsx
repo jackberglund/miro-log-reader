@@ -29,6 +29,13 @@ export default function Header({
   return (
     <>
       <div className="header-top">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" width="28" height="28" style={{ flexShrink: 0 }}>
+          <rect width="32" height="32" rx="6" fill="#1a1a2e"/>
+          <path d="M6 11 L11 16 L6 21" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <rect x="14" y="10" width="12" height="2" rx="1" fill="#4ade80" opacity="0.9"/>
+          <rect x="14" y="15" width="9" height="2" rx="1" fill="#4ade80" opacity="0.6"/>
+          <rect x="14" y="20" width="11" height="2" rx="1" fill="#4ade80" opacity="0.6"/>
+        </svg>
         <Heading level={1} className="title">Log Reader</Heading>
       </div>
       <Form className="api-section" onSubmit={(e) => e.preventDefault()}>
