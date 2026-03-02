@@ -92,7 +92,7 @@ export default function Header({
                 <Tabs.Trigger value="audit">Audit Logs</Tabs.Trigger>
                 <Tabs.Trigger value="content">Content Logs</Tabs.Trigger>
                 <Tabs.Trigger value="ai-interaction">AI Interaction Logs</Tabs.Trigger>
-                <Tabs.Trigger value="timeline">Timeline</Tabs.Trigger>
+                {/* <Tabs.Trigger value="timeline">Timeline</Tabs.Trigger> */}
               </Tabs.List>
             </Tabs>
           </div>
