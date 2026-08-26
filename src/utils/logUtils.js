@@ -68,6 +68,9 @@ export function getTableEntryValue(entry, column) {
   if (column === 'action') return (entry.action || '').toLowerCase();
   if (column === 'name') return (entry.name || '').toLowerCase();
   if (column === 'actionType') return (entry.actionType || '').toLowerCase();
+  if (column === 'model') return (entry.model || '').toLowerCase();
+  if (column === 'session') return (entry.session || '').toLowerCase();
+  if (column === 'preview') return (entry.preview || '').toLowerCase();
   return '';
 }
 
@@ -85,10 +88,28 @@ export function getSortedTableEntries(entries, sortColumn, sortDirection) {
   return withIndex;
 }
 
+const PREVIEW_MAX_LENGTH = 80;
+
+/** First text snippet from an AI interaction entry's details.content, truncated for table display. */
+function buildContentPreview(data) {
+  const details = data.details;
+  if (!details || typeof details !== 'object') return '';
+  let text = '';
+  if (Array.isArray(details.content)) {
+    const first = details.content.find((c) => c && typeof c.text === 'string' && c.text.trim() !== '');
+    if (first) text = first.text.trim();
+  }
+  if (!text && details.arguments != null) text = JSON.stringify(details.arguments);
+  if (!text && details.result != null) text = JSON.stringify(details.result);
+  if (!text) return '';
+  const oneLine = text.replace(/\s+/g, ' ');
+  return oneLine.length > PREVIEW_MAX_LENGTH ? `${oneLine.slice(0, PREVIEW_MAX_LENGTH)}…` : oneLine;
+}
+
 export function parseMiroItem(item) {
   const data = item && typeof item === 'object' && item.data != null ? item.data : item;
   if (typeof data !== 'object' || data === null) {
-    return { time: '', user: '', feature: '', type: String(item) };
+    return { time: '', user: '', feature: '', type: String(item), model: '', session: '', preview: '' };
   }
   let timeRaw = '';
   for (const key of DATE_KEYS) {
@@ -99,10 +120,17 @@ export function parseMiroItem(item) {
     }
   }
   const time = timeRaw !== '' ? String(timeRaw) : '';
-  const user = (data.actor && data.actor.name != null) ? String(data.actor.name) : '';
-  const feature = data.aiFeatureName != null ? String(data.aiFeatureName) : '';
-  const type = data.logType != null ? String(data.logType) : '';
-  return { time, user, feature, type };
+  const user = (data.actor && data.actor.name != null)
+    ? String(data.actor.name)
+    : (data.actor && data.actor.email != null ? String(data.actor.email) : '');
+  // surface/eventType are the current API schema; aiFeatureName/logType kept as legacy fallbacks
+  const feature = data.surface != null ? String(data.surface) : (data.aiFeatureName != null ? String(data.aiFeatureName) : '');
+  const type = data.eventType != null ? String(data.eventType) : (data.logType != null ? String(data.logType) : '');
+  const model = data.model?.name != null ? String(data.model.name) : (data.tool?.name != null ? String(data.tool.name) : '');
+  const sessionFull = data.session?.id ?? data.sessionId ?? '';
+  const session = sessionFull ? String(sessionFull).slice(0, 8) : '';
+  const preview = buildContentPreview(data);
+  return { time, user, feature, type, model, session, preview };
 }
 
 /** Get session id from an AI interaction log entry (from raw payload). */
@@ -110,8 +138,68 @@ export function getEntrySessionId(entry) {
   if (!entry?.raw || typeof entry.raw !== 'object') return null;
   const raw = entry.raw;
   const data = raw.data != null ? raw.data : raw;
-  const id = data.sessionId ?? data.session_id ?? raw.sessionId ?? raw.session_id;
+  const id = data.session?.id ?? data.sessionId ?? data.session_id ?? raw.sessionId ?? raw.session_id;
   return id != null && id !== '' ? String(id) : null;
+}
+
+/** All text items from an AI interaction entry's details.content, with roles. */
+export function getEntryContentItems(entry) {
+  if (!entry?.raw || typeof entry.raw !== 'object') return [];
+  const raw = entry.raw;
+  const data = raw.data != null ? raw.data : raw;
+  const details = data.details;
+  if (!details || typeof details !== 'object' || !Array.isArray(details.content)) return [];
+  const eventType = data.eventType != null ? String(data.eventType) : '';
+  const defaultRole = eventType === 'output' || eventType.startsWith('model_invocation_response') ? 'assistant' : 'user';
+  return details.content
+    .filter((c) => c && typeof c.text === 'string' && c.text.trim() !== '')
+    .map((c) => ({ role: c.role ? String(c.role).toLowerCase() : defaultRole, text: c.text }));
+}
+
+/** Structured detail rows for an AI interaction entry, for the drill-in sidebar. */
+export function getAiEntryDetails(entry) {
+  if (!entry?.raw || typeof entry.raw !== 'object') return [];
+  const raw = entry.raw;
+  const data = raw.data != null ? raw.data : raw;
+  const details = data.details && typeof data.details === 'object' ? data.details : {};
+  const rows = [];
+  const add = (label, value) => {
+    if (value !== undefined && value !== null && value !== '') rows.push({ label, value: String(value) });
+  };
+  add('Time', data.createdAt);
+  add('Stored at', data.storedAt);
+  add('Event type', data.eventType);
+  add('Surface', data.surface);
+  add('User', data.actor?.name);
+  add('Email', data.actor?.email);
+  add('Actor ID', data.actor?.id);
+  add('Session ID', data.session?.id);
+  add('Parent session', data.session?.parentSessionId);
+  add('Turn ID', data.turnId);
+  if (data.object) add('Board', data.object.name ? `${data.object.name} (${data.object.id ?? ''})` : data.object.id);
+  add('Model', data.model?.name);
+  add('Model provider', data.model?.provider);
+  add('Model platform', data.model?.platform);
+  if (data.model && data.model.byoai != null) add('BYOAI', data.model.byoai ? 'Yes' : 'No');
+  if (data.tool) add('Tool', data.tool.type ? `${data.tool.name ?? ''} (${data.tool.type})` : data.tool.name);
+  add('Status', details.status);
+  add('Model call ID', details.modelCallId);
+  add('Tool call ID', details.toolCallId);
+  add('Entry ID', data.id);
+  return rows;
+}
+
+/** Raw payload with details.content removed (it is rendered separately in the sidebar). */
+export function getRawWithoutContent(entry) {
+  const raw = entry?.raw;
+  if (!raw || typeof raw !== 'object') return raw;
+  const strip = (obj) => {
+    if (!obj || typeof obj !== 'object' || !obj.details || typeof obj.details !== 'object') return obj;
+    const { content, ...restDetails } = obj.details;
+    return { ...obj, details: restDetails };
+  };
+  if (raw.data != null && typeof raw.data === 'object') return { ...raw, data: strip(raw.data) };
+  return strip(raw);
 }
 
 /** Get actor email from an AI interaction log entry (from raw.payload.data.actor.email). */
@@ -153,7 +241,21 @@ function extractMessagesFromEntry(entry, timeMs) {
   if (!data || typeof data !== 'object') return [];
   const out = [];
   const t = timeMs;
-  const actorName = entry.type === 'response' ? 'Sidekick' : getEntryActorName(entry);
+  const eventType = data.eventType != null ? String(data.eventType) : '';
+  const isOutput = entry.type === 'response' || eventType === 'output';
+  const actorName = isOutput ? 'Sidekick' : getEntryActorName(entry);
+
+  // Current API schema: details.content is an array of { type, role?, text }
+  const contentItems = getEntryContentItems(entry);
+  if (contentItems.length) {
+    for (const item of contentItems) {
+      const content = stripTrailingChatLine(item.text).trim();
+      if (!content) continue;
+      const role = item.role === 'assistant' || item.role === 'tool' ? item.role : (isOutput ? 'assistant' : 'user');
+      out.push({ role, content, time: t, actorName: role === 'assistant' ? 'Sidekick' : actorName });
+    }
+    if (out.length) return out;
+  }
 
   if (Array.isArray(data.messages)) {
     for (const m of data.messages) {
@@ -200,9 +302,17 @@ export function getConversationMessages(logEntries, actorEmail, sessionId, selec
   const normSid = sessionId != null ? String(sessionId) : '';
   if (!selectedEntry && !normEmail && !normSid) return [];
 
+  // Internal model/tool invocation events duplicate the full transcript on every call —
+  // only user-facing input/output events belong in the conversation view.
+  const isConversationEvent = (e) => {
+    const type = (e.type || '').toLowerCase();
+    return !type.startsWith('model_invocation') && !type.startsWith('tool_invocation');
+  };
+
   const entries =
     normEmail || normSid
       ? (logEntries || []).filter((e) => {
+          if (!isConversationEvent(e)) return false;
           const email = getEntryActorEmail(e);
           const sid = getEntrySessionId(e);
           const eEmail = email != null ? String(email).trim() : '';
@@ -214,7 +324,10 @@ export function getConversationMessages(logEntries, actorEmail, sessionId, selec
       : [];
 
   const alreadyIncluded = selectedEntry && entries.some((e) => e === selectedEntry || e.raw === selectedEntry?.raw);
-  const toProcess = selectedEntry && !alreadyIncluded ? [selectedEntry, ...entries] : entries;
+  const includeSelected = selectedEntry && !alreadyIncluded && isConversationEvent(selectedEntry);
+  let toProcess = includeSelected ? [selectedEntry, ...entries] : entries;
+  // Fall back to the selected entry alone so the sidebar never shows an empty conversation.
+  if (toProcess.length === 0 && selectedEntry) toProcess = [selectedEntry];
   const byTime = [...toProcess].sort((a, b) => getEntrySortTime(a) - getEntrySortTime(b));
 
   const out = [];
@@ -282,14 +395,25 @@ export function flattenForSidebar(obj, prefix = '') {
     return pairs;
   }
   if (Array.isArray(obj)) {
-    pairs.push({ key: prefix || 'value', value: JSON.stringify(obj) });
+    if (obj.length === 0) {
+      pairs.push({ key: prefix || 'value', value: '[]' });
+      return pairs;
+    }
+    obj.forEach((item, i) => {
+      const fullKey = `${prefix || 'value'}[${i}]`;
+      if (item !== null && typeof item === 'object') {
+        pairs.push(...flattenForSidebar(item, fullKey));
+      } else {
+        pairs.push({ key: fullKey, value: item === undefined || item === null ? '' : String(item) });
+      }
+    });
     return pairs;
   }
   if (typeof obj === 'object' && obj !== null) {
     for (const key of Object.keys(obj)) {
       const fullKey = prefix ? `${prefix}.${key}` : key;
       const val = obj[key];
-      if (val !== null && typeof val === 'object' && !Array.isArray(val) && Object.getPrototypeOf(val) === Object.prototype) {
+      if (val !== null && typeof val === 'object' && (Array.isArray(val) || Object.getPrototypeOf(val) === Object.prototype)) {
         pairs.push(...flattenForSidebar(val, fullKey));
       } else {
         pairs.push({ key: fullKey, value: val === undefined || val === null ? '' : String(val) });
@@ -305,6 +429,11 @@ export function getTextToScan(entry) {
     const raw = entry.raw;
     const data = raw.data != null ? raw.data : raw;
     const parts = [];
+    if (Array.isArray(data.details?.content)) {
+      for (const c of data.details.content) {
+        if (c && typeof c.text === 'string' && c.text.trim()) parts.push(c.text);
+      }
+    }
     if (data.prompt) parts.push(String(data.prompt));
     if (data.response) parts.push(String(data.response));
     if (data.text) parts.push(String(data.text));

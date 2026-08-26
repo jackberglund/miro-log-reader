@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Button, IconButton, Flex, Text } from '@mirohq/design-system';
 import { IconCross } from '@mirohq/design-system-icons';
-import { flattenForSidebar, getEntrySessionId, getEntryActorEmail, getConversationMessages } from '../utils/logUtils.js';
+import {
+  flattenForSidebar,
+  getEntrySessionId,
+  getEntryActorEmail,
+  getConversationMessages,
+  getEntryContentItems,
+  getAiEntryDetails,
+  getRawWithoutContent,
+} from '../utils/logUtils.js';
 
 export default function Sidebar({ isOpen, onClose, entryIndex, entry, logEntries = [], viewMode, sensitiveScanEnabled, activeLogTab }) {
   const [showConversationView, setShowConversationView] = useState(false);
@@ -12,14 +20,16 @@ export default function Sidebar({ isOpen, onClose, entryIndex, entry, logEntries
 
   if (!isOpen) return null;
 
-  const raw = entry?.raw;
-  const flat = raw != null && typeof raw === 'object' ? flattenForSidebar(raw) : entry ? flattenForSidebar(entry) : [];
   const isAiInteraction = activeLogTab === 'ai-interaction';
+  const raw = isAiInteraction && entry ? getRawWithoutContent(entry) : entry?.raw;
+  const flat = raw != null && typeof raw === 'object' ? flattenForSidebar(raw) : entry ? flattenForSidebar(entry) : [];
   const sessionId = entry ? getEntrySessionId(entry) : null;
   const actorEmail = entry ? getEntryActorEmail(entry) : null;
   const feature = entry?.feature ?? '';
+  const aiDetails = isAiInteraction && entry ? getAiEntryDetails(entry) : [];
+  const contentItems = isAiInteraction && entry ? getEntryContentItems(entry) : [];
   const canViewConversation = isAiInteraction && entry &&
-    (feature === 'miro_ai_sidekicks_chat' || feature.includes('sidekicks'));
+    (feature === 'miro_ai_sidekicks_chat' || feature.includes('sidekick') || sessionId != null);
   const conversationMessages = canViewConversation
     ? getConversationMessages(logEntries, actorEmail, sessionId, entry)
     : [];
@@ -89,7 +99,20 @@ export default function Sidebar({ isOpen, onClose, entryIndex, entry, logEntries
                   </Button>
                 </div>
               )}
-              {viewMode === 'columns' && (
+              {viewMode === 'columns' && isAiInteraction && aiDetails.length > 0 && (
+                <div className="sidebar-section">
+                  <Text as="p" size="small" weight="bold" color="secondary" className="sidebar-section-title">Details</Text>
+                  <dl className="sidebar-key-value-list">
+                    {aiDetails.map(({ label, value }) => (
+                      <React.Fragment key={label}>
+                        <dt className="sidebar-key">{label}</dt>
+                        <dd className="sidebar-value">{value}</dd>
+                      </React.Fragment>
+                    ))}
+                  </dl>
+                </div>
+              )}
+              {viewMode === 'columns' && (!isAiInteraction || aiDetails.length === 0) && (
                 <div className="sidebar-section">
                   <Text as="p" size="small" weight="bold" color="secondary" className="sidebar-section-title">Details</Text>
                   <dl className="sidebar-key-value-list">
@@ -122,6 +145,19 @@ export default function Sidebar({ isOpen, onClose, entryIndex, entry, logEntries
                       </>
                     )}
                   </dl>
+                </div>
+              )}
+              {contentItems.length > 0 && (
+                <div className="sidebar-section">
+                  <Text as="p" size="small" weight="bold" color="secondary" className="sidebar-section-title">Content</Text>
+                  <div className="sidebar-content-list">
+                    {contentItems.map((item, i) => (
+                      <div key={i} className={`sidebar-content-block sidebar-content-block--${item.role}`}>
+                        <div className="sidebar-content-role">{item.role}</div>
+                        <div className="sidebar-content-text">{item.text}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {flat.length > 0 && (

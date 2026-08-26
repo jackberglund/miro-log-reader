@@ -19,6 +19,22 @@ import {
   toISOUTC,
 } from './utils/logUtils.js';
 
+const AI_TABLE_COLUMNS = [
+  { key: 'time', label: 'Time' },
+  { key: 'user', label: 'User' },
+  { key: 'feature', label: 'Feature' },
+  { key: 'type', label: 'Type' },
+  { key: 'model', label: 'Model / Tool' },
+  { key: 'session', label: 'Session' },
+  { key: 'preview', label: 'Content' },
+];
+const AI_FILTER_FIELDS = [
+  { key: 'user', label: 'User', optionsKey: 'users' },
+  { key: 'feature', label: 'Feature', optionsKey: 'features' },
+  { key: 'type', label: 'Type', optionsKey: 'types' },
+  { key: 'model', label: 'Model', optionsKey: 'models' },
+];
+
 const AUDIT_TABLE_COLUMNS = [
   { key: 'time', label: 'Time' },
   { key: 'actor', label: 'Actor' },
@@ -66,7 +82,7 @@ export default function App() {
   const [tableSortColumn, setTableSortColumn] = useState('time');
   const [tableSortDirection, setTableSortDirection] = useState('desc');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterValue, setFilterValue] = useState({ user: '', feature: '', type: '' });
+  const [filterValue, setFilterValue] = useState({ user: '', feature: '', type: '', model: '' });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarEntryIndex, setSidebarEntryIndex] = useState(null);
   const [autoscroll, setAutoscroll] = useState(true);
@@ -106,17 +122,19 @@ export default function App() {
   const filterUser = filterValue.user || '';
   const filterFeature = filterValue.feature || '';
   const filterType = filterValue.type || '';
+  const filterModel = filterValue.model || '';
 
   const matchEntry = useCallback((entry, isColumn) => {
     const msg = isColumn
-      ? [entry.time, entry.user, entry.feature, entry.type, entry.scanResult?.summary ?? ''].join(' ').toLowerCase()
+      ? [entry.time, entry.user, entry.feature, entry.type, entry.model, entry.session, entry.preview, entry.scanResult?.summary ?? ''].join(' ').toLowerCase()
       : (entry.msg || entry.raw || '').toString().toLowerCase();
     const matchSearch = !query || (msg && msg.includes(query));
     const matchUser = !filterUser || (entry.user || '') === filterUser;
     const matchFeature = !filterFeature || (entry.feature || '') === filterFeature;
     const matchType = !filterType || (entry.type || '') === filterType;
-    return matchSearch && matchUser && matchFeature && matchType;
-  }, [query, filterUser, filterFeature, filterType]);
+    const matchModel = !filterModel || (entry.model || '') === filterModel;
+    return matchSearch && matchUser && matchFeature && matchType && matchModel;
+  }, [query, filterUser, filterFeature, filterType, filterModel]);
 
   const visibleRows = (() => {
     if (logEntries.length === 0) return [];
@@ -128,13 +146,14 @@ export default function App() {
 
   const totalRows = viewMode === 'columns' ? sortedTableEntries.length : logEntries.length;
   const visibleCount = visibleRows.length;
-  const hasActiveFilters = !!query || !!filterUser || !!filterFeature || !!filterType;
+  const hasActiveFilters = !!query || !!filterUser || !!filterFeature || !!filterType || !!filterModel;
 
   const filterOptions = viewMode === 'columns' ? {
     users: [...new Set(logEntries.map((e) => e.user || '').filter(Boolean))].sort(),
     features: [...new Set(logEntries.map((e) => e.feature || '').filter(Boolean))].sort(),
     types: [...new Set(logEntries.map((e) => e.type || '').filter(Boolean))].sort(),
-  } : { users: [], features: [], types: [] };
+    models: [...new Set(logEntries.map((e) => e.model || '').filter(Boolean))].sort(),
+  } : { users: [], features: [], types: [], models: [] };
 
   const auditFilterOptions = {
     actors: [...new Set(auditLogEntries.map((e) => e.actor || '').filter(Boolean))].sort(),
@@ -443,6 +462,7 @@ export default function App() {
             filterOptions={filterOptions}
             filterValue={filterValue}
             onFilterChange={setFilterValue}
+            filterFields={AI_FILTER_FIELDS}
             showFiltersWhenEmpty
             autoscroll={autoscroll}
             setAutoscroll={setAutoscroll}
@@ -498,6 +518,7 @@ export default function App() {
               onEntryClick={openSidebar}
               autoscroll={autoscroll}
               sensitiveScanEnabled={sensitiveScanEnabled}
+              tableColumns={sensitiveScanEnabled ? [...AI_TABLE_COLUMNS, { key: 'scan', label: 'Sensitive data' }] : AI_TABLE_COLUMNS}
             />
             <Footer totalRows={totalRows} visibleCount={visibleCount} hasActiveFilters={hasActiveFilters} />
           </>
