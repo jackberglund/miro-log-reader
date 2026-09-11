@@ -8,6 +8,8 @@ import {
   getConversationMessages,
   getEntryContentItems,
   getAiEntryDetails,
+  getContentEntryDetails,
+  getContentEntryContentItems,
   getRawWithoutContent,
 } from '../utils/logUtils.js';
 
@@ -21,13 +23,18 @@ export default function Sidebar({ isOpen, onClose, entryIndex, entry, logEntries
   if (!isOpen) return null;
 
   const isAiInteraction = activeLogTab === 'ai-interaction';
-  const raw = isAiInteraction && entry ? getRawWithoutContent(entry) : entry?.raw;
+  const isContentLog = activeLogTab === 'content';
+  const raw = (isAiInteraction || isContentLog) && entry ? getRawWithoutContent(entry) : entry?.raw;
   const flat = raw != null && typeof raw === 'object' ? flattenForSidebar(raw) : entry ? flattenForSidebar(entry) : [];
   const sessionId = entry ? getEntrySessionId(entry) : null;
   const actorEmail = entry ? getEntryActorEmail(entry) : null;
   const feature = entry?.feature ?? '';
-  const aiDetails = isAiInteraction && entry ? getAiEntryDetails(entry) : [];
-  const contentItems = isAiInteraction && entry ? getEntryContentItems(entry) : [];
+  const detailRows = entry
+    ? (isAiInteraction ? getAiEntryDetails(entry) : isContentLog ? getContentEntryDetails(entry) : [])
+    : [];
+  const contentItems = entry
+    ? (isAiInteraction ? getEntryContentItems(entry) : isContentLog ? getContentEntryContentItems(entry) : [])
+    : [];
   const canViewConversation = isAiInteraction && entry &&
     (feature === 'miro_ai_sidekicks_chat' || feature.includes('sidekick') || sessionId != null);
   const conversationMessages = canViewConversation
@@ -99,11 +106,11 @@ export default function Sidebar({ isOpen, onClose, entryIndex, entry, logEntries
                   </Button>
                 </div>
               )}
-              {viewMode === 'columns' && isAiInteraction && aiDetails.length > 0 && (
+              {viewMode === 'columns' && detailRows.length > 0 && (
                 <div className="sidebar-section">
                   <Text as="p" size="small" weight="bold" color="secondary" className="sidebar-section-title">Details</Text>
                   <dl className="sidebar-key-value-list">
-                    {aiDetails.map(({ label, value }) => (
+                    {detailRows.map(({ label, value }) => (
                       <React.Fragment key={label}>
                         <dt className="sidebar-key">{label}</dt>
                         <dd className="sidebar-value">{value}</dd>
@@ -112,7 +119,7 @@ export default function Sidebar({ isOpen, onClose, entryIndex, entry, logEntries
                   </dl>
                 </div>
               )}
-              {viewMode === 'columns' && (!isAiInteraction || aiDetails.length === 0) && (
+              {viewMode === 'columns' && detailRows.length === 0 && (
                 <div className="sidebar-section">
                   <Text as="p" size="small" weight="bold" color="secondary" className="sidebar-section-title">Details</Text>
                   <dl className="sidebar-key-value-list">
@@ -152,7 +159,7 @@ export default function Sidebar({ isOpen, onClose, entryIndex, entry, logEntries
                   <Text as="p" size="small" weight="bold" color="secondary" className="sidebar-section-title">Content</Text>
                   <div className="sidebar-content-list">
                     {contentItems.map((item, i) => (
-                      <div key={i} className={`sidebar-content-block sidebar-content-block--${item.role}`}>
+                      <div key={i} className={`sidebar-content-block sidebar-content-block--${item.role.replace(/\s+/g, '-')}`}>
                         <div className="sidebar-content-role">{item.role}</div>
                         <div className="sidebar-content-text">{item.text}</div>
                       </div>

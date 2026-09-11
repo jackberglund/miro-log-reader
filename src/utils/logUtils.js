@@ -71,6 +71,8 @@ export function getTableEntryValue(entry, column) {
   if (column === 'model') return (entry.model || '').toLowerCase();
   if (column === 'session') return (entry.session || '').toLowerCase();
   if (column === 'preview') return (entry.preview || '').toLowerCase();
+  if (column === 'ai') return (entry.ai || '').toLowerCase();
+  if (column === 'board') return (entry.board || '').toLowerCase();
   return '';
 }
 
@@ -189,14 +191,22 @@ export function getAiEntryDetails(entry) {
   return rows;
 }
 
-/** Raw payload with details.content removed (it is rendered separately in the sidebar). */
+/** Raw payload with fields that are rendered separately in the sidebar removed. */
 export function getRawWithoutContent(entry) {
   const raw = entry?.raw;
   if (!raw || typeof raw !== 'object') return raw;
   const strip = (obj) => {
-    if (!obj || typeof obj !== 'object' || !obj.details || typeof obj.details !== 'object') return obj;
-    const { content, ...restDetails } = obj.details;
-    return { ...obj, details: restDetails };
+    if (!obj || typeof obj !== 'object') return obj;
+    let out = obj;
+    if (obj.details && typeof obj.details === 'object') {
+      const { content, ...restDetails } = obj.details;
+      out = { ...out, details: restDetails };
+    }
+    if (obj.state && typeof obj.state === 'object') {
+      const { text, prompt, aiPrompt, systemInstructions, output, ...restState } = obj.state;
+      out = { ...out, state: restState };
+    }
+    return out;
   };
   if (raw.data != null && typeof raw.data === 'object') return { ...raw, data: strip(raw.data) };
   return strip(raw);
@@ -372,10 +382,38 @@ export function parseAuditItem(item) {
   return { time, actor, eventCategory, event, object: obj };
 }
 
+/** Strip HTML tags and decode common entities for plain-text previews. */
+export function stripHtml(html) {
+  if (html == null) return '';
+  return String(html)
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(p|h[1-6]|li|div)>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** First meaningful text from a content log entry's state, for table display. */
+function buildContentLogPreview(state) {
+  if (!state || typeof state !== 'object') return '';
+  const text = stripHtml(state.text) || stripHtml(state.aiPrompt) || stripHtml(state.output)
+    || stripHtml(state.title) || stripHtml(state.name)
+    || (state.snapshot ? `Table snapshot: ${state.snapshot.fields?.length ?? 0} fields, ${state.snapshot.records?.length ?? 0} records` : '');
+  if (!text) return '';
+  return text.length > PREVIEW_MAX_LENGTH ? `${text.slice(0, PREVIEW_MAX_LENGTH)}…` : text;
+}
+
 export function parseContentLogItem(item) {
   const data = item && typeof item === 'object' && item.data != null ? item.data : item;
   if (typeof data !== 'object' || data === null) {
-    return { time: '', actor: '', actionType: '', type: String(item) };
+    return { time: '', actor: '', actionType: '', type: String(item), ai: '', board: '', preview: '' };
   }
   const timeRaw = data.actionTime != null && data.actionTime !== '' ? data.actionTime : '';
   const time = timeRaw !== '' ? String(timeRaw) : '';
@@ -384,8 +422,78 @@ export function parseContentLogItem(item) {
     : '';
   const actionType = data.actionType != null ? String(data.actionType) : '';
   const stateObj = data.state && typeof data.state === 'object' ? data.state : null;
-  const type = stateObj != null && stateObj.type != null ? String(stateObj.type) : '';
-  return { time, actor, actionType, type };
+  // data_table entries have no state.type — fall back to itemType so the column is never blank
+  const type = stateObj != null && stateObj.type != null
+    ? String(stateObj.type)
+    : (data.itemType != null ? String(data.itemType) : '');
+  const ai = data.ai && typeof data.ai === 'object' && data.ai.assisted != null
+    ? (data.ai.assisted ? 'Yes' : 'No')
+    : '';
+  const board = data.contentId != null ? String(data.contentId) : '';
+  const preview = buildContentLogPreview(stateObj);
+  return { time, actor, actionType, type, ai, board, preview };
+}
+
+/** Structured detail rows for a content log entry, for the drill-in sidebar. */
+export function getContentEntryDetails(entry) {
+  if (!entry?.raw || typeof entry.raw !== 'object') return [];
+  const raw = entry.raw;
+  const data = raw.data != null ? raw.data : raw;
+  const state = data.state && typeof data.state === 'object' ? data.state : {};
+  const rows = [];
+  const add = (label, value) => {
+    if (value !== undefined && value !== null && value !== '') rows.push({ label, value: String(value) });
+  };
+  add('Time', data.actionTime);
+  add('Action', data.actionType);
+  add('Actor', data.actor?.name);
+  add('Email', data.actor?.email);
+  add('Actor ID', data.actor?.id);
+  if (data.ai && data.ai.assisted != null) add('AI assisted', data.ai.assisted ? 'Yes' : 'No');
+  add('Item type', data.itemType);
+  add('Widget type', state.type);
+  add('Title', stripHtml(state.title));
+  add('Name', state.name);
+  if (state.hidden != null) add('Hidden', state.hidden ? 'Yes' : 'No');
+  add('Item ID', data.itemId);
+  add('Parent item', state.parentItemId);
+  if (Array.isArray(data.relationships) && data.relationships.length > 0) {
+    add('Relationships', data.relationships.map((r) => `${r.type ?? ''}: ${r.itemId ?? ''}`).join('; '));
+  }
+  add('Board (content ID)', data.contentId);
+  add('Resource ID', state.resourceId != null && String(state.resourceId) !== '0' ? state.resourceId : '');
+  if (state.snapshot && typeof state.snapshot === 'object') {
+    add('Table snapshot', `${state.snapshot.fields?.length ?? 0} fields, ${state.snapshot.records?.length ?? 0} records`);
+  }
+  add('Entry ID', data.id);
+  return rows;
+}
+
+/** Text blocks from a content log entry's state, with labels, for the drill-in sidebar. */
+export function getContentEntryContentItems(entry) {
+  if (!entry?.raw || typeof entry.raw !== 'object') return [];
+  const raw = entry.raw;
+  const data = raw.data != null ? raw.data : raw;
+  const state = data.state && typeof data.state === 'object' ? data.state : null;
+  if (!state) return [];
+  const items = [];
+  const text = stripHtml(state.text);
+  if (text) items.push({ role: 'text', text });
+  const prompt = stripHtml(state.prompt);
+  if (prompt) items.push({ role: 'prompt', text: prompt });
+  if (state.aiPrompt != null && String(state.aiPrompt).trim() !== '') {
+    items.push({ role: 'ai prompt', text: String(state.aiPrompt).trim() });
+  }
+  if (state.systemInstructions != null && String(state.systemInstructions).trim() !== '') {
+    items.push({ role: 'system', text: String(state.systemInstructions).trim() });
+  }
+  if (state.output != null && String(state.output).trim() !== '') {
+    items.push({ role: 'output', text: String(state.output).trim() });
+  }
+  if (state.altText != null && String(state.altText).trim() !== '') {
+    items.push({ role: 'alt text', text: String(state.altText).trim() });
+  }
+  return items;
 }
 
 export function flattenForSidebar(obj, prefix = '') {

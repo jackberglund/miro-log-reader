@@ -52,13 +52,17 @@ const AUDIT_FILTER_FIELDS = [
 const CONTENT_TABLE_COLUMNS = [
   { key: 'time', label: 'Time' },
   { key: 'actor', label: 'Actor' },
-  { key: 'actionType', label: 'Action type' },
+  { key: 'actionType', label: 'Action' },
   { key: 'type', label: 'Type' },
+  { key: 'ai', label: 'AI' },
+  { key: 'board', label: 'Board' },
+  { key: 'preview', label: 'Content' },
 ];
 const CONTENT_FILTER_FIELDS = [
   { key: 'actor', label: 'Actor', optionsKey: 'actors' },
-  { key: 'actionType', label: 'Action type', optionsKey: 'actionTypes' },
+  { key: 'actionType', label: 'Action', optionsKey: 'actionTypes' },
   { key: 'type', label: 'Type', optionsKey: 'types' },
+  { key: 'ai', label: 'AI', optionsKey: 'ais' },
 ];
 
 const defaultDateFrom = () => {
@@ -102,7 +106,7 @@ export default function App() {
   const [contentLogEntries, setContentLogEntries] = useState([]);
   const [contentTableSortColumn, setContentTableSortColumn] = useState('time');
   const [contentTableSortDirection, setContentTableSortDirection] = useState('desc');
-  const [contentFilterValue, setContentFilterValue] = useState({ actor: '', actionType: '', type: '' });
+  const [contentFilterValue, setContentFilterValue] = useState({ actor: '', actionType: '', type: '', ai: '' });
   const [timelineSelectedActor, setTimelineSelectedActor] = useState('');
   const [timelineEntries, setTimelineEntries] = useState([]);
 
@@ -181,21 +185,23 @@ export default function App() {
     actors: [...new Set(contentLogEntries.map((e) => e.actor || '').filter(Boolean))].sort(),
     actionTypes: [...new Set(contentLogEntries.map((e) => e.actionType || '').filter(Boolean))].sort(),
     types: [...new Set(contentLogEntries.map((e) => e.type || '').filter(Boolean))].sort(),
+    ais: [...new Set(contentLogEntries.map((e) => e.ai || '').filter(Boolean))].sort(),
   };
   const matchEntryContent = useCallback((entry) => {
-    const msg = [entry.time, entry.actor, entry.actionType, entry.type].join(' ').toLowerCase();
+    const msg = [entry.time, entry.actor, entry.actionType, entry.type, entry.ai, entry.board, entry.preview].join(' ').toLowerCase();
     const matchSearch = !query || (msg && msg.includes(query));
     const matchActor = !contentFilterValue.actor || (entry.actor || '') === contentFilterValue.actor;
     const matchActionType = !contentFilterValue.actionType || (entry.actionType || '') === contentFilterValue.actionType;
     const matchType = !contentFilterValue.type || (entry.type || '') === contentFilterValue.type;
-    return matchSearch && matchActor && matchActionType && matchType;
+    const matchAi = !contentFilterValue.ai || (entry.ai || '') === contentFilterValue.ai;
+    return matchSearch && matchActor && matchActionType && matchType && matchAi;
   }, [query, contentFilterValue]);
   const contentVisibleRows = contentLogEntries.length === 0 ? [] : contentSortedTableEntries
     .map(({ entry, index }) => ({ entry, originalIndex: index }))
     .filter(({ entry }) => matchEntryContent(entry));
   const contentTotalRows = contentLogEntries.length;
   const contentVisibleCount = contentVisibleRows.length;
-  const contentHasActiveFilters = !!query || !!contentFilterValue.actor || !!contentFilterValue.actionType || !!contentFilterValue.type;
+  const contentHasActiveFilters = !!query || !!contentFilterValue.actor || !!contentFilterValue.actionType || !!contentFilterValue.type || !!contentFilterValue.ai;
 
   const loadLines = useCallback((lines) => {
     const entries = sortEntriesNewestFirst(lines.map((line) => parseLine(typeof line === 'string' ? line : line?.raw ?? '')));

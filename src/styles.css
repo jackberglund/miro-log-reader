@@ -186,6 +186,11 @@ td.log-col-session {
   white-space: nowrap;
 }
 
+td.log-col-board,
+td.log-col-ai {
+  white-space: nowrap;
+}
+
 /* Lines mode */
 .log-line {
   padding: 0.25rem 0;
@@ -386,6 +391,15 @@ td.log-col-session {
 
 .sidebar-content-block--tool .sidebar-content-role {
   background: var(--colors-yellow-100, #fff8e1);
+}
+
+.sidebar-content-block--ai-prompt .sidebar-content-role,
+.sidebar-content-block--prompt .sidebar-content-role {
+  background: var(--colors-blue-100, #e3f2fd);
+}
+
+.sidebar-content-block--output .sidebar-content-role {
+  background: var(--colors-green-100, #e8f5e9);
 }
 
 .sidebar-content-text {
